@@ -1,0 +1,12 @@
+{
+  "name": "loadcheck",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "npm run build && node --test tests/unit.test.mjs tests/browser.test.mjs",
+    "test:unit": "npm run build && node --test tests/unit.test.mjs",
+    "test:browser": "npm run build && node --test tests/browser.test.mjs"
+  }
+}

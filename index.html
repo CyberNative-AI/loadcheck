@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self' https://huggingface.co; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'self'">
+    <meta name="description" content="Browser-only checks for observable Hugging Face repository loading-risk signals.">
+    <title>Loadcheck — Does loading this Hugging Face repo run code?</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/assets/styles.css">
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <a class="brand" href="/" aria-label="Loadcheck home"><img src="/mark.svg" alt=""><span>CyberNative · Loadcheck</span></a>
+        <nav aria-label="Helpful links"><a href="/methodology.html">How this works</a><a href="https://github.com/CyberNative-AI/loadcheck" rel="noreferrer">View source</a></nav>
+      </header>
+      <main>
+        <h1>Does loading this Hugging Face repo run code?</h1>
+        <p class="intro">Paste a public model or dataset ID. Loadcheck checks repository metadata and small text configs in your browser, then shows what a common loading call could execute.</p>
+        <form class="panel" novalidate>
+          <label for="repo">Model or dataset ID</label>
+          <input id="repo" name="repo" autocomplete="off" placeholder="org/repo" required>
+          <div class="grid">
+            <div><label for="type">Repository type</label><select id="type" name="type"><option value="model">Model</option><option value="dataset">Dataset</option></select></div>
+            <div><label for="revision">Revision (optional)</label><input id="revision" name="revision" autocomplete="off"></div>
+          </div>
+          <p class="help">Use a full commit SHA to check an immutable version. Branches and tags can move.</p>
+          <button type="submit">Check repository</button>
+        </form>
+        <p id="status" aria-live="polite" aria-atomic="true"></p>
+        <section id="results" aria-label="Check result"></section>
+        <p class="privacy">Your repo ID goes from your browser to Hugging Face. CyberNative does not receive it. We count one page request and one completed check in first-party delivery logs; the completion request contains no repo ID or verdict.</p>
+        <p class="limitation">Loadcheck reads repository metadata and small text configs. It does not download weights, run repository code, or prove a repo is safe.</p>
+      </main>
+      <footer>Loadcheck is an observable-signal check, not a safety certificate.</footer>
+    </div>
+    <script type="module" src="/assets/app.js"></script>
+  </body>
+</html>

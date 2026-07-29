@@ -1,0 +1,7 @@
+---
+configs:
+- nested:
+    expression: "{{ files }}"
+    statement: "{% if x %}"
+    comment: "{# note #}"
+---

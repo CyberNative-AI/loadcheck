@@ -17,7 +17,7 @@ function terminal(title, detail, scan) {
   if (detail) add(results, "p", detail);
   if (scan) {
     const meta = document.createElement("dl"); meta.className = "metadata";
-    [["Repository", scan.repoId], ["Type", scan.type], ["Requested revision", scan.requestedRevision || "None"], ["Resolved commit", scan.resolvedSha], ["Checked (UTC)", new Date().toISOString()], ["Scan complete", "Yes"]].forEach(([key, value]) => { add(meta, "dt", key); add(meta, "dd", value); }); results.append(meta);
+    [["Repository", scan.repoId || "Not resolved"], ["Type", scan.type || "Not resolved"], ["Requested revision", scan.requestedRevision || "None"], ["Resolved commit", scan.resolvedSha || "Not resolved"], ["Checked (UTC)", new Date().toISOString()], ["Scan complete", scan.complete ? "Yes" : "No"]].forEach(([key, value]) => { add(meta, "dt", key); add(meta, "dd", value); }); results.append(meta);
   }
   status.textContent = title; sendCompletion();
 }
@@ -32,7 +32,12 @@ function render(result, scan) {
 
 form.addEventListener("submit", async event => {
   event.preventDefault(); results.replaceChildren(); button.disabled = true; status.textContent = "Checking repository…";
-  try { const scan = await scanHub({ repoId: repo.value, type: type.value, revision: revision.value.trim() }); render(analyze(scan), scan); }
-  catch (error) { const message = error instanceof HubError ? error.message : "Repository metadata could not be parsed."; terminal("Loadcheck could not complete this check.", message); }
+  const incomplete = { repoId: repo.value.trim(), type: type.value, requestedRevision: revision.value.trim(), resolvedSha: "", complete: false };
+  let scan;
+  try { scan = await scanHub({ repoId: repo.value, type: type.value, revision: revision.value.trim() }); render(analyze(scan), scan); }
+  catch (error) {
+    const message = error instanceof HubError ? error.message : "Repository metadata could not be parsed.";
+    terminal("Loadcheck could not complete this check.", message, { ...incomplete, ...(scan || error?.context || {}), complete: false });
+  }
   finally { button.disabled = false; }
 });

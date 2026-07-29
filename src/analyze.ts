@@ -32,40 +32,64 @@ function localModule(value) {
 }
 
 /**
- * Parses only the bounded YAML front matter required for configs inspection.
- * It never evaluates tags, anchors, aliases, templates, or repository code.
+ * Inspects only a constrained YAML front matter subset. It treats all values as
+ * text: tags, anchors, aliases, block scalars, and interpolation are rejected
+ * before traversal, so repository data is never executed or rendered.
  */
 export function inspectConfigsFrontMatter(readme) {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(readme);
   if (!match) return { hasConfigs: false, templates: [] };
   const body = match[1];
-  if (/\t|(^|\s)(!!|&|\*)[^\s]/m.test(body)) throw new Error("Unsupported YAML feature in repository metadata.");
+  if (/\t|(^|\s)![^\s]|(^|\s)[&*][A-Za-z_]/m.test(body)) throw new Error("Unsupported YAML feature in repository metadata.");
   const lines = body.split(/\r?\n/);
-  let inConfigs = false;
-  let configsIndent = -1;
-  let item = -1;
+  let configsIndent = null;
   const templates = [];
-  for (const raw of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line.trim() || /^\s*#/.test(line)) continue;
+    const indent = line.match(/^ */)[0].length;
+    if (line.trim() === "configs:") { configsIndent = indent; break; }
+  }
+  if (configsIndent === null) return { hasConfigs: false, templates };
+
+  const root = "README.md → configs";
+  const stack = [{ indent: configsIndent, path: root }];
+  const sequenceCounts = new Map();
+  const inspect = (path, value) => {
+    const quotes = (value.match(/'/g) || []).length + (value.match(/"/g) || []).length;
+    if (quotes % 2 || (value.includes("[") && !value.includes("]"))) throw new Error("Malformed YAML front matter.");
+    for (const delimiter of JINJA) if (delimiter.pattern.test(value)) templates.push({ path, delimiter: delimiter.name });
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const raw = lines[index];
     if (!raw.trim() || /^\s*#/.test(raw)) continue;
     const indent = raw.match(/^ */)[0].length;
-    const line = raw.trim();
-    if (!inConfigs) {
-      if (line === "configs:") { inConfigs = true; configsIndent = indent; }
-      continue;
-    }
+    let line = raw.trim();
+    if (line === "configs:") continue;
     if (indent <= configsIndent && !line.startsWith("-")) break;
-    const singleQuotes = (line.match(/'/g) || []).length;
-    const doubleQuotes = (line.match(/"/g) || []).length;
-    if (line.includes("[") && !line.includes("]") || singleQuotes % 2 || doubleQuotes % 2) throw new Error("Malformed YAML front matter.");
-    if (line.startsWith("-")) item += 1;
-    const field = /^-?\s*([^:#][^:]*):/.exec(line);
-    const key = field ? field[1].trim() : "value";
-    const path = `README.md → configs[${Math.max(item, 0)}].${key}`;
-    for (const delimiter of JINJA) if (delimiter.pattern.test(line)) {
-      templates.push({ path, delimiter: delimiter.name });
+    while (stack.length > 1 && indent <= stack[stack.length - 1].indent) stack.pop();
+    let parent = stack[stack.length - 1];
+    if (line.startsWith("-")) {
+      const counter = parent.path + "@" + indent;
+      const item = sequenceCounts.get(counter) || 0;
+      sequenceCounts.set(counter, item + 1);
+      parent = { indent, path: parent.path + "[" + item + "]" };
+      stack.push(parent);
+      line = line.slice(1).trim();
+      if (!line) continue;
     }
+    const field = /^([^:#][^:]*):(?:\s*(.*))?$/.exec(line);
+    if (!field) { inspect(parent.path, line); continue; }
+    const key = field[1].trim();
+    const value = field[2] || "";
+    if (!key) throw new Error("Malformed YAML front matter.");
+    const path = parent.path + "." + key;
+    if (value === "|" || value === ">") throw new Error("Unsupported YAML feature in repository metadata.");
+    inspect(path, value);
+    if (!value) stack.push({ indent, path });
   }
-  return { hasConfigs: inConfigs, templates };
+  return { hasConfigs: true, templates };
 }
 
 export function analyze(input) {

@@ -1,10 +1,36 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import { analyze, inspectConfigsFrontMatter } from "../dist/assets/analyze.js";
-import { parseRepository } from "../dist/assets/hub.js";
+import { HubError, MAX_TEXT_BYTES, parseRepository, parseRevision, scanHub } from "../dist/assets/hub.js";
 
-const SHA = "0123456789abcdef0123456789abcdef01234567";
+const fixture = JSON.parse(await readFile("tests/fixtures/hub-success.json", "utf8"));
+const SHA = fixture.sha;
 const base = (changes = {}) => ({ repoId: "org/repo", type: "model", requestedRevision: SHA, resolvedSha: SHA, paths: ["config.json", "model.safetensors"], config: {}, ...changes });
+const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...extra } });
+const text = (body, status = 200, extra = {}) => new Response(body, { status, headers: { "content-type": "text/plain", ...extra } });
+
+async function withFetch(handler, callback) {
+  const original = globalThis.fetch;
+  globalThis.fetch = handler;
+  try { return await callback(); } finally { globalThis.fetch = original; }
+}
+function hubFetch({ info = fixture.modelInfo, tree = fixture.modelTree, config = fixture.modelConfig, readme = fixture.datasetReadme, treeHeaders = {} } = {}, calls = []) {
+  return async url => {
+    const target = String(url); calls.push(target);
+    if (target.includes("/revision/")) return json(info);
+    if (target.includes("/tree/")) return json(tree, 200, treeHeaders);
+    if (target.endsWith("/config.json")) return config instanceof Response ? config : text(typeof config === "string" ? config : JSON.stringify(config));
+    if (target.endsWith("/README.md")) return text(readme);
+    throw new Error("Unexpected Hub URL " + target);
+  };
+}
+async function scanWith(handler, input = {}) {
+  return withFetch(handler, () => scanHub({ repoId: "org/repo", type: "model", revision: SHA, ...input }));
+}
+async function expectHubError(handler, code, input) {
+  await assert.rejects(() => scanWith(handler, input), error => error instanceof HubError && error.code === code && error.context?.complete === false);
+}
 
 test("a built-in safetensors model at a full SHA has no covered signal", () => {
   assert.equal(analyze(base()).verdict, "No covered code-execution signal found at this commit.");
@@ -35,19 +61,58 @@ test("a root dataset loading script is a code-execution signal", () => {
   assert.equal(result.findings[0].path, "repo.py");
 });
 test("ordinary dataset config globs do not become template findings", () => {
-  const readme = "---\nconfigs:\n- config_name: default\n  data_files: data/*.csv\n  builder_name: csv\n---\n# Dataset";
+  const readme = fixture.datasetReadme;
   assert.equal(analyze(base({ type: "dataset", readme, paths: ["README.md"] })).findings.length, 0);
 });
-test("all Jinja delimiter classes below configs are flagged with a path", () => {
-  const readme = "---\nconfigs:\n- data_files: '{{ files }}'\n  note: '{% if x %}'\n  comment: '{# note #}'\n---";
+test("all Jinja delimiter classes below nested configs are flagged with exact paths", async () => {
+  const readme = await readFile("tests/fixtures/readme-jinja.yml", "utf8");
   const result = analyze(base({ type: "dataset", readme, paths: ["README.md"] }));
-  assert.equal(result.findings.filter(item => item.name.includes("Template")).length, 3);
-  assert.match(result.findings[0].path, /^README\.md → configs\[0\]/);
+  const findings = result.findings.filter(item => item.name.includes("Template"));
+  assert.equal(findings.length, 3);
+  assert.deepEqual(findings.map(item => item.path), [
+    "README.md → configs[0].nested.expression",
+    "README.md → configs[0].nested.statement",
+    "README.md → configs[0].nested.comment"
+  ]);
 });
-test("malformed YAML fails closed", () => {
-  assert.throws(() => inspectConfigsFrontMatter("---\nconfigs:\n- value: [broken\n---"), /Malformed/);
+test("unsafe or malformed YAML fails closed", async () => {
+  const malformed = await readFile("tests/fixtures/malformed-readme.yml", "utf8");
+  assert.throws(() => inspectConfigsFrontMatter(malformed), /Malformed/);
+  assert.throws(() => inspectConfigsFrontMatter("---\nconfigs:\n- value: !unsafe x\n---\n"), /Unsupported/);
 });
-test("repository parsing permits canonical HF URLs and rejects unsafe inputs", () => {
+test("repository and revision parsing accepts supported forms and rejects unsafe or pull-request forms", () => {
   assert.equal(parseRepository("https://huggingface.co/datasets/org/repo"), "org/repo");
+  assert.equal(parseRevision("release/1.0"), "release/1.0");
   for (const value of ["<script>x</script>/repo", "https://evil.example/org/repo", "org/repo?x=y", "org%2Frepo"]) assert.throws(() => parseRepository(value));
+  for (const value of ["refs/pull/12/head", "pr/12", "pull/12", "main?x=1", "x".repeat(129)]) assert.throws(() => parseRevision(value));
+});
+test("Hub success binds all reads to the resolved SHA and skips README without configs metadata", async () => {
+  const calls = [];
+  const scan = await scanWith(hubFetch({}, calls));
+  assert.equal(scan.resolvedSha, SHA);
+  assert.ok(calls.some(url => url.includes("/api/models/org/repo/revision/")));
+  assert.equal(calls.some(url => url.includes("org%2Frepo")), false);
+  assert.ok(calls.every(url => !url.includes("/resolve/") || url.includes("/resolve/" + SHA + "/")));
+  const datasetCalls = [];
+  await scanWith(hubFetch({ info: { sha: SHA, cardData: {} }, tree: [{ path: "README.md" }] }, datasetCalls), { type: "dataset" });
+  assert.equal(datasetCalls.some(url => url.endsWith("/README.md")), false);
+});
+test("malformed JSON, oversized text, oversized tree, and bad pagination fail closed", async () => {
+  const badJson = await readFile("tests/fixtures/malformed-config.json", "utf8");
+  await expectHubError(hubFetch({ tree: [{ path: "config.json" }], config: badJson }), "parse");
+  await expectHubError(hubFetch({ tree: [{ path: "config.json" }], config: text("x", 200, { "content-length": String(MAX_TEXT_BYTES + 1) }) }), "size");
+  await expectHubError(hubFetch({ tree: Array.from({ length: 10001 }, (_, index) => ({ path: "x" + index })) }), "size");
+  await expectHubError(hubFetch({ treeHeaders: { link: "<https://huggingface.co/api/models/org%2Frepo/tree/not-the-sha?cursor=x>; rel=\"next\"" } }), "pagination");
+});
+test("HTTP, timeout, and CORS-style failures fail closed with distinct error classes", async () => {
+  for (const [status, code] of [[404, "missing"], [403, "forbidden"], [429, "rate"], [500, "server"]]) {
+    await expectHubError(async () => json({}, status), code);
+  }
+  await expectHubError(async () => { const error = new Error("aborted"); error.name = "AbortError"; throw error; }, "timeout");
+  await expectHubError(async () => { throw new TypeError("Failed to fetch"); }, "network");
+});
+test("README parse failures and resolved-SHA pagination URLs fail closed", async () => {
+  const malformed = await readFile("tests/fixtures/malformed-readme.yml", "utf8");
+  await expectHubError(hubFetch({ info: fixture.datasetInfo, tree: fixture.datasetTree, readme: malformed }), "parse", { type: "dataset" });
+  await expectHubError(hubFetch({ treeHeaders: { link: "<https://huggingface.co/api/models/org%2Frepo/tree/ffffffffffffffffffffffffffffffffffffffff?cursor=x>; rel=\"next\"" } }), "pagination");
 });

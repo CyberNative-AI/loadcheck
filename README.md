@@ -21,7 +21,7 @@ It reports a custom `auto_map` mapping, a dataset root loading script, Jinja syn
 
 ## Privacy
 
-The submitted repository ID goes from the browser to Hugging Face. Loadcheck sends one fixed-path, same-origin completion image after a terminal result; it has no body, query string, repository ID, type, revision, result, or timestamp. There are no cookies, local storage, service worker, analytics, or backend.
+The submitted repository ID goes from the browser to Hugging Face. Loadcheck sends one fixed-path, same-origin completion request after a terminal result; it has no body, query string, repository ID, type, revision, result, or timestamp. There are no cookies, local storage, service worker, analytics, or backend.
 
 ## Sources
 

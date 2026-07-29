@@ -1,0 +1,32 @@
+{
+  "sha": "0123456789abcdef0123456789abcdef01234567",
+  "modelInfo": {
+    "sha": "0123456789abcdef0123456789abcdef01234567",
+    "cardData": {}
+  },
+  "datasetInfo": {
+    "sha": "0123456789abcdef0123456789abcdef01234567",
+    "cardData": {
+      "configs": [
+        {
+          "config_name": "default"
+        }
+      ]
+    }
+  },
+  "modelTree": [
+    {
+      "path": "config.json"
+    },
+    {
+      "path": "model.safetensors"
+    }
+  ],
+  "modelConfig": {},
+  "datasetTree": [
+    {
+      "path": "README.md"
+    }
+  ],
+  "datasetReadme": "---\nconfigs:\n- config_name: default\n  data_files: data/*.csv\n---\n# Dataset"
+}

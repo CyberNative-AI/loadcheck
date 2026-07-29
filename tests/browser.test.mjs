@@ -61,6 +61,7 @@ test("desktop stranger path renders a supported verdict, accessible metadata, br
   eventRequests.length = 0;
   const { context, page } = await freshPage({ width: 1600, height: 1000 });
   try {
+    await page.screenshot({ path: "evidence/loadcheck-desktop.png" });
     for (let index = 0; index < 4; index += 1) await page.keyboard.press("Tab");
     assert.equal(await page.evaluate(() => document.activeElement?.id), "repo");
     await page.keyboard.type("org/repo");
@@ -80,13 +81,34 @@ test("desktop stranger path renders a supported verdict, accessible metadata, br
     assert.match(computed.titleFont, /Fraunces/);
     assert.ok(computed.scrollWidth <= computed.viewport);
     assert.ok(computed.y.every((value, index) => index === 0 || value >= computed.y[index - 1]));
-    await page.screenshot({ path: "evidence/loadcheck-desktop.png", fullPage: true });
     await page.waitForTimeout(50);
     assert.deepEqual(eventRequests, [{ url: "/_events/check-complete.gif", method: "GET", cookie: "", referer: "", contentLength: "" }]);
   } finally { await context.close(); }
 });
 
-test("mobile layout has no horizontal clipping and untrusted input is inserted as text after an incomplete terminal result", async () => {
+test("mobile keyboard stranger path reaches a supported terminal result with visible focus and no clipping", async () => {
+  eventRequests.length = 0;
+  const { context, page } = await freshPage({ width: 390, height: 844 });
+  try {
+    await page.screenshot({ path: "evidence/loadcheck-mobile.png" });
+    for (let index = 0; index < 4; index += 1) await page.keyboard.press("Tab");
+    assert.equal(await page.evaluate(() => document.activeElement?.id), "repo");
+    const focus = await page.locator("#repo").evaluate(node => ({ style: getComputedStyle(node).outlineStyle, width: getComputedStyle(node).outlineWidth }));
+    assert.deepEqual(focus, { style: "solid", width: "3px" });
+    await page.keyboard.type("org/repo");
+    await page.keyboard.press("Enter");
+    await page.getByRole("heading", { name: "Pin this repository before loading it." }).waitFor();
+    assert.equal(await page.locator("#status").getAttribute("aria-live"), "polite");
+    const layout = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, viewport: innerWidth, bodySize: getComputedStyle(document.body).fontSize, h1Right: document.querySelector("h1").getBoundingClientRect().right }));
+    assert.equal(layout.bodySize, "16px");
+    assert.ok(layout.scrollWidth <= layout.viewport);
+    assert.ok(layout.h1Right <= layout.viewport);
+    await page.waitForTimeout(50);
+    assert.deepEqual(eventRequests, [{ url: "/_events/check-complete.gif", method: "GET", cookie: "", referer: "", contentLength: "" }]);
+  } finally { await context.close(); }
+});
+
+test("untrusted repository input is rendered as text in an incomplete result", async () => {
   eventRequests.length = 0;
   const { context, page } = await freshPage({ width: 390, height: 844 });
   try {
@@ -96,11 +118,6 @@ test("mobile layout has no horizontal clipping and untrusted input is inserted a
     assert.equal(await page.evaluate(() => window.__loadcheckXss), undefined);
     assert.equal(await page.locator("#results img").count(), 0);
     assert.match(await page.locator("#results").innerText(), /Scan complete\s+No/);
-    const layout = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, viewport: innerWidth, bodySize: getComputedStyle(document.body).fontSize, h1Right: document.querySelector("h1").getBoundingClientRect().right }));
-    assert.equal(layout.bodySize, "16px");
-    assert.ok(layout.scrollWidth <= layout.viewport);
-    assert.ok(layout.h1Right <= layout.viewport);
-    await page.screenshot({ path: "evidence/loadcheck-mobile.png", fullPage: true });
     await page.waitForTimeout(50);
     assert.deepEqual(eventRequests, [{ url: "/_events/check-complete.gif", method: "GET", cookie: "", referer: "", contentLength: "" }]);
   } finally { await context.close(); }

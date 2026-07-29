@@ -80,6 +80,18 @@ test("unsafe or malformed YAML fails closed", async () => {
   assert.throws(() => inspectConfigsFrontMatter(malformed), /Malformed/);
   assert.throws(() => inspectConfigsFrontMatter("---\nconfigs:\n- value: !unsafe x\n---\n"), /Unsupported/);
 });
+test("nested and flow-style configs report exact template paths", async () => {
+  const nested = await readFile("tests/fixtures/readme-nested-jinja.yml", "utf8");
+  const flow = await readFile("tests/fixtures/readme-flow-jinja.yml", "utf8");
+  assert.deepEqual(inspectConfigsFrontMatter(nested).templates, [{ path: "README.md → configs[0].data_files[0].path", delimiter: "expression delimiter" }]);
+  assert.deepEqual(inspectConfigsFrontMatter(flow).templates, [{ path: "README.md → configs[0].data_files", delimiter: "expression delimiter" }]);
+});
+test("unsafe YAML tags and aliases fail closed before a complete dataset scan", async () => {
+  for (const file of ["readme-unsafe-tag.yml", "readme-unsafe-alias.yml"]) {
+    const readme = await readFile("tests/fixtures/" + file, "utf8");
+    await expectHubError(hubFetch({ info: fixture.datasetInfo, tree: fixture.datasetTree, readme }), "parse", { type: "dataset" });
+  }
+});
 test("repository and revision parsing accepts supported forms and rejects unsafe or pull-request forms", () => {
   assert.equal(parseRepository("https://huggingface.co/datasets/org/repo"), "org/repo");
   assert.equal(parseRevision("release/1.0"), "release/1.0");

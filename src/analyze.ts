@@ -1,3 +1,5 @@
+import { isAlias, isMap, isScalar, isSeq, parseDocument } from "yaml";
+
 /** Pure, network-free detection rules for Loadcheck. */
 export const FULL_SHA = /^[a-f0-9]{40}$/i;
 const PICKLE = /\.(bin|pt|pth|ckpt|pkl|pickle)$/i;
@@ -31,64 +33,62 @@ function localModule(value) {
   return module && /^[A-Za-z0-9_/-]+$/.test(module) ? `${module}.py` : null;
 }
 
+function yamlPath(path, key) {
+  return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`;
+}
+
+function rejectUnsafeYaml(node) {
+  if (!node) return;
+  if (isAlias(node) || node.anchor || (node.tag && node.tag.startsWith("!"))) {
+    throw new Error("Unsupported YAML feature in repository metadata.");
+  }
+  if (isMap(node)) {
+    for (const pair of node.items) {
+      if (!isScalar(pair.key) || typeof pair.key.value !== "string") throw new Error("Unsupported YAML map key in repository metadata.");
+      rejectUnsafeYaml(pair.key);
+      rejectUnsafeYaml(pair.value);
+    }
+  } else if (isSeq(node)) {
+    for (const item of node.items) rejectUnsafeYaml(item);
+  }
+}
+
+function inspectYamlValue(node, path, templates) {
+  if (!node) return;
+  if (isScalar(node)) {
+    if (typeof node.value !== "string") return;
+    for (const delimiter of JINJA) if (delimiter.pattern.test(node.value)) templates.push({ path, delimiter: delimiter.name });
+    return;
+  }
+  if (isSeq(node)) {
+    node.items.forEach((item, index) => inspectYamlValue(item, `${path}[${index}]`, templates));
+    return;
+  }
+  if (isMap(node)) {
+    for (const pair of node.items) {
+      if (!isScalar(pair.key) || typeof pair.key.value !== "string") throw new Error("Unsupported YAML map key in repository metadata.");
+      inspectYamlValue(pair.value, yamlPath(path, pair.key.value), templates);
+    }
+    return;
+  }
+  throw new Error("Unsupported YAML feature in repository metadata.");
+}
+
 /**
- * Inspects only a constrained YAML front matter subset. It treats all values as
- * text: tags, anchors, aliases, block scalars, and interpolation are rejected
- * before traversal, so repository data is never executed or rendered.
+ * Parses YAML front matter with YAML's non-executing core schema. Tags,
+ * anchors, aliases, and non-string map keys fail closed before traversal.
  */
 export function inspectConfigsFrontMatter(readme) {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(readme);
   if (!match) return { hasConfigs: false, templates: [] };
-  const body = match[1];
-  if (/\t|(^|\s)![^\s]|(^|\s)[&*][A-Za-z_]/m.test(body)) throw new Error("Unsupported YAML feature in repository metadata.");
-  const lines = body.split(/\r?\n/);
-  let configsIndent = null;
+  const document = parseDocument(match[1], { schema: "core", strict: true, uniqueKeys: true, maxAliasCount: 0 });
+  if (document.errors.length) throw new Error("Malformed YAML front matter.");
+  rejectUnsafeYaml(document.contents);
+  if (!isMap(document.contents)) throw new Error("Unsupported YAML front matter root.");
+  const configs = document.contents.items.find(pair => isScalar(pair.key) && pair.key.value === "configs");
+  if (!configs) return { hasConfigs: false, templates: [] };
   const templates = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (!line.trim() || /^\s*#/.test(line)) continue;
-    const indent = line.match(/^ */)[0].length;
-    if (line.trim() === "configs:") { configsIndent = indent; break; }
-  }
-  if (configsIndent === null) return { hasConfigs: false, templates };
-
-  const root = "README.md → configs";
-  const stack = [{ indent: configsIndent, path: root }];
-  const sequenceCounts = new Map();
-  const inspect = (path, value) => {
-    const quotes = (value.match(/'/g) || []).length + (value.match(/"/g) || []).length;
-    if (quotes % 2 || (value.includes("[") && !value.includes("]"))) throw new Error("Malformed YAML front matter.");
-    for (const delimiter of JINJA) if (delimiter.pattern.test(value)) templates.push({ path, delimiter: delimiter.name });
-  };
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const raw = lines[index];
-    if (!raw.trim() || /^\s*#/.test(raw)) continue;
-    const indent = raw.match(/^ */)[0].length;
-    let line = raw.trim();
-    if (line === "configs:") continue;
-    if (indent <= configsIndent && !line.startsWith("-")) break;
-    while (stack.length > 1 && indent <= stack[stack.length - 1].indent) stack.pop();
-    let parent = stack[stack.length - 1];
-    if (line.startsWith("-")) {
-      const counter = parent.path + "@" + indent;
-      const item = sequenceCounts.get(counter) || 0;
-      sequenceCounts.set(counter, item + 1);
-      parent = { indent, path: parent.path + "[" + item + "]" };
-      stack.push(parent);
-      line = line.slice(1).trim();
-      if (!line) continue;
-    }
-    const field = /^([^:#][^:]*):(?:\s*(.*))?$/.exec(line);
-    if (!field) { inspect(parent.path, line); continue; }
-    const key = field[1].trim();
-    const value = field[2] || "";
-    if (!key) throw new Error("Malformed YAML front matter.");
-    const path = parent.path + "." + key;
-    if (value === "|" || value === ">") throw new Error("Unsupported YAML feature in repository metadata.");
-    inspect(path, value);
-    if (!value) stack.push({ indent, path });
-  }
+  inspectYamlValue(configs.value, "README.md → configs", templates);
   return { hasConfigs: true, templates };
 }
 

@@ -10,6 +10,10 @@
     "test:browser": "npm run build && node --test tests/browser.test.mjs"
   },
   "devDependencies": {
+    "esbuild": "0.28.1",
     "playwright": "1.59.1"
+  },
+  "dependencies": {
+    "yaml": "2.9.0"
   }
 }

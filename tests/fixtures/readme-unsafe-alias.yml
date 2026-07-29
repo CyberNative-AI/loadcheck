@@ -1,0 +1,5 @@
+---
+configs:
+- defaults: &shared {path: "{{ files }}"}
+  path: *shared
+---

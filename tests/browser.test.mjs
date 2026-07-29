@@ -11,14 +11,18 @@ let browser;
 let origin;
 let server;
 const eventRequests = [];
+const capturedRequests = [];
 const mime = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".woff2": "font/woff2", ".gif": "image/gif" };
 
 function respond(res, status, body, headers = {}) {
   res.writeHead(status, { "cache-control": "no-store", ...headers });
   res.end(body);
 }
-function serve(req, res) {
+async function serve(req, res) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
   const url = new URL(req.url, "http://local.test");
+  capturedRequests.push({ path: url.pathname, query: url.search, body: Buffer.concat(chunks).toString("utf8"), cookie: req.headers.cookie || "", referer: req.headers.referer || "" });
   if (url.pathname === "/_events/check-complete.gif") {
     eventRequests.push({ url: req.url, method: req.method, cookie: req.headers.cookie || "", referer: req.headers.referer || "", contentLength: req.headers["content-length"] || "" });
     return respond(res, 204, "");
@@ -137,5 +141,37 @@ test("a mocked Hub HTTP failure renders required incomplete metadata and a singl
     assert.match(await page.locator("#results").innerText(), /Repository\s+org\/repo[\s\S]*Type\s+model[\s\S]*Requested revision\s+release\/1[\s\S]*Resolved commit\s+Not resolved[\s\S]*Checked \(UTC\)[\s\S]*Scan complete\s+No/);
     await page.waitForTimeout(50);
     assert.deepEqual(eventRequests, [{ url: "/_events/check-complete.gif", method: "GET", cookie: "", referer: "", contentLength: "" }]);
+  } finally { await context.close(); }
+});
+
+
+test("a JavaScript-disabled form cannot submit entered repository values", async () => {
+  eventRequests.length = 0;
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 1280, height: 800 } });
+  const page = await context.newPage();
+  const repoValue = "sentinel-org/sentinel-repo";
+  const typeValue = "dataset";
+  const revisionValue = "sentinel-revision";
+  try {
+    await page.goto(origin, { waitUntil: "networkidle" });
+    assert.deepEqual(await page.evaluate(() => ({
+      repoName: document.querySelector("#repo").getAttribute("name"),
+      typeName: document.querySelector("#type").getAttribute("name"),
+      revisionName: document.querySelector("#revision").getAttribute("name"),
+      staticDisabled: document.querySelector("button[type=submit]").disabled
+    })), { repoName: null, typeName: null, revisionName: null, staticDisabled: true });
+    capturedRequests.length = 0;
+    await page.locator("#repo").fill(repoValue);
+    await page.locator("#type").selectOption(typeValue);
+    await page.locator("#revision").fill(revisionValue);
+    await page.keyboard.press("Enter");
+    await page.locator("button[type=submit]").click({ force: true });
+    await page.waitForTimeout(50);
+    assert.equal(capturedRequests.length, 0, "no-JavaScript interaction made a post-load request");
+    for (const request of capturedRequests) {
+      const captured = [request.path, request.query, request.body, request.cookie, request.referer].join("\n");
+      assert.equal([repoValue, typeValue, revisionValue].some(value => captured.includes(value)), false, `entered value reached server capture: ${captured}`);
+    }
+    assert.deepEqual(eventRequests, []);
   } finally { await context.close(); }
 });

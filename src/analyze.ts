@@ -10,11 +10,11 @@ const JINJA = [
 ];
 
 export const OFFICIAL = {
-  transformers: "https://huggingface.co/docs/transformers/main_classes/model#transformers.PreTrainedModel.from_pretrained",
-  datasets: "https://huggingface.co/docs/datasets/dataset_script",
-  configs: "https://huggingface.co/docs/hub/datasets-manual-configuration",
+  transformers: "https://huggingface.co/docs/transformers/model_doc/auto",
+  datasets: "https://huggingface.co/docs/datasets/v3.4.0/en/dataset_script",
+  configs: "https://huggingface.co/docs/hub/en/datasets-manual-configuration",
   pickle: "https://huggingface.co/docs/hub/security-pickle",
-  revisions: "https://huggingface.co/docs/transformers/main_classes/model#transformers.PreTrainedModel.from_pretrained"
+  revisions: "https://huggingface.co/docs/transformers/models"
 };
 
 function finding(severity, name, path, observed, trigger, saferAction, source) {
@@ -105,15 +105,15 @@ export function analyze(input) {
       const local = localModule(mapping.value);
       const named = local && tree.has(local) ? `; confirmed local file ${local}` : "";
       const cross = mapping.value.includes("--") ? "cross-repository reference" : "custom AutoClass mapping";
-      findings.push(finding("high", "Custom model code", mapping.path, `${cross}: ${mapping.value}${named}`, `AutoModel.from_pretrained(\"${repoId}\", trust_remote_code=True)`, `Inspect the named code, then pin revision=\"${resolvedSha}\"${local ? ` and code_revision=\"${resolvedSha}\"` : ""}.`, OFFICIAL.transformers));
+      findings.push(finding("high", "Custom model code", mapping.path, `${cross}: ${mapping.value}${named}`, "Current Transformers requires the explicit trust_remote_code=True opt-in to execute custom AutoClass code.", "Inspect the named code before explicitly opting in, and pin the loading call's revision to the resolved commit.", OFFICIAL.transformers));
     }
   }
   if (type === "dataset") {
     const repoName = repoId.split("/")[1];
     const loader = `${repoName}.py`;
-    if (tree.has(loader)) findings.push(finding("high", "Dataset loading script", loader, "Root-level dataset loading script present.", `load_dataset(\"${repoId}\", trust_remote_code=True)`, `Use supported data files without remote code, or inspect ${loader} and pin ${resolvedSha} before opting in.`, OFFICIAL.datasets));
+    if (tree.has(loader)) findings.push(finding("high", "Legacy dataset loading script", loader, "Root-level dataset loading script present.", "In legacy Datasets v3.4, repository code ran only when load_dataset(..., trust_remote_code=True) was explicitly opted into.", "For that legacy call, use supported data files without remote code, or inspect the script and pin the resolved commit before explicitly opting in.", OFFICIAL.datasets));
     if (readme) for (const hit of inspectConfigsFrontMatter(readme).templates) {
-      findings.push(finding("high", "Template syntax in dataset configuration", hit.path, hit.delimiter, "Dataset processing or viewer code that interprets repository configuration.", `Do not load or render this configuration; inspect it and use explicit local data-file arguments at ${resolvedSha}.`, OFFICIAL.configs));
+      findings.push(finding("neutral", "Template-like syntax in dataset configuration", hit.path, hit.delimiter, "Current YAML builder parameters work without custom code, and no current standard Hugging Face loading call is documented to render these delimiters.", "Manually review this metadata as needed; this signal does not indicate code execution or a pinning requirement.", OFFICIAL.configs));
     }
   }
   const pickles = paths.filter(path => PICKLE.test(path));
@@ -125,9 +125,15 @@ export function analyze(input) {
   }
   const pinned = FULL_SHA.test(requestedRevision || "");
   if (!pinned) findings.push(finding("low", "Unpinned revision", "revision", requestedRevision || "No revision supplied.", `from_pretrained(\"${repoId}\")`, `Pin this call with revision=\"${resolvedSha}\".`, OFFICIAL.revisions));
-  findings.sort((a, b) => ({ high: 0, medium: 1, low: 2 }[a.severity] - ({ high: 0, medium: 1, low: 2 }[b.severity])));
+  findings.sort((a, b) => ({ high: 0, medium: 1, low: 2, neutral: 3 }[a.severity] - ({ high: 0, medium: 1, low: 2, neutral: 3 }[b.severity])));
   const top = findings[0];
-  const verdict = top?.severity === "high" ? "Repository code can run when this repo is loaded."
+  const hasCustomModelCode = findings.some(item => item.name === "Custom model code");
+  const hasLegacyDatasetScript = findings.some(item => item.name === "Legacy dataset loading script");
+  const hasOnlyTemplateSignal = findings.some(item => item.name === "Template-like syntax in dataset configuration") && findings.every(item => item.name === "Template-like syntax in dataset configuration");
+  const verdict = hasCustomModelCode ? "Custom model code can run only when a current Transformers load explicitly opts into trust_remote_code=True."
+    : hasLegacyDatasetScript ? "In legacy Datasets v3.4, repository code ran only when load_dataset(..., trust_remote_code=True) was explicitly opted into."
+    : hasOnlyTemplateSignal ? "Template-like dataset metadata needs manual review; it is not a code-execution or pinning verdict."
+    : top?.severity === "high" ? "Repository code can run when this repo is loaded."
     : top?.name === "Pickle-capable weights" ? "Loading may deserialize pickle-capable weights."
     : top ? "Pin this repository before loading it."
     : "No covered code-execution signal found at this commit.";

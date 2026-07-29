@@ -39,10 +39,13 @@ test("an omitted revision is an unpinned verdict", () => {
   const result = analyze(base({ requestedRevision: "" }));
   assert.equal(result.verdict, "Pin this repository before loading it.");
   assert.equal(result.findings[0].name, "Unpinned revision");
+  assert.equal(result.findings[0].source, "https://huggingface.co/docs/transformers/models");
 });
 test("a confirmed local auto_map mapping is custom-code evidence", () => {
   const result = analyze(base({ paths: ["config.json", "modeling_foo.py"], config: { auto_map: { AutoModelForCausalLM: "modeling_foo.Foo" } } }));
-  assert.equal(result.verdict, "Repository code can run when this repo is loaded.");
+  assert.equal(result.verdict, "Custom model code can run only when a current Transformers load explicitly opts into trust_remote_code=True.");
+  assert.match(result.findings[0].trigger, /explicit trust_remote_code=True opt-in/);
+  assert.equal(result.findings[0].source, "https://huggingface.co/docs/transformers/model_doc/auto");
   assert.match(result.findings[0].observed, /modeling_foo\.py/);
 });
 test("a cross-repository auto_map mapping does not invent a file", () => {
@@ -58,6 +61,10 @@ test("a safetensors path suppresses the pickle-only signal", () => {
 });
 test("a root dataset loading script is a code-execution signal", () => {
   const result = analyze(base({ type: "dataset", paths: ["repo.py", "other.py"] }));
+  assert.equal(result.verdict, "In legacy Datasets v3.4, repository code ran only when load_dataset(..., trust_remote_code=True) was explicitly opted into.");
+  assert.equal(result.findings[0].name, "Legacy dataset loading script");
+  assert.match(result.findings[0].trigger, /legacy Datasets v3.4.*explicitly opted into/);
+  assert.equal(result.findings[0].source, "https://huggingface.co/docs/datasets/v3.4.0/en/dataset_script");
   assert.equal(result.findings[0].path, "repo.py");
 });
 test("ordinary dataset config globs do not become template findings", () => {
@@ -69,11 +76,26 @@ test("all Jinja delimiter classes below nested configs are flagged with exact pa
   const result = analyze(base({ type: "dataset", readme, paths: ["README.md"] }));
   const findings = result.findings.filter(item => item.name.includes("Template"));
   assert.equal(findings.length, 3);
+  assert.equal(result.verdict, "Template-like dataset metadata needs manual review; it is not a code-execution or pinning verdict.");
+  assert.ok(findings.every(item => item.severity === "neutral"));
+  assert.ok(findings.every(item => item.source === "https://huggingface.co/docs/hub/en/datasets-manual-configuration"));
   assert.deepEqual(findings.map(item => item.path), [
     "README.md → configs[0].nested.expression",
     "README.md → configs[0].nested.statement",
     "README.md → configs[0].nested.comment"
   ]);
+});
+test("an unpinned revision remains the top-level verdict alongside template metadata", async () => {
+  const readme = await readFile("tests/fixtures/readme-jinja.yml", "utf8");
+  const result = analyze(base({ type: "dataset", requestedRevision: "", readme, paths: ["README.md"] }));
+  assert.equal(result.verdict, "Pin this repository before loading it.");
+  const unpinned = result.findings.find(item => item.name === "Unpinned revision");
+  assert.ok(unpinned);
+  assert.equal(unpinned.source, "https://huggingface.co/docs/transformers/models");
+  const templates = result.findings.filter(item => item.name === "Template-like syntax in dataset configuration");
+  assert.equal(templates.length, 3);
+  assert.ok(templates.every(item => item.severity === "neutral"));
+  assert.ok(templates.every(item => item.source === "https://huggingface.co/docs/hub/en/datasets-manual-configuration"));
 });
 test("unsafe or malformed YAML fails closed", async () => {
   const malformed = await readFile("tests/fixtures/malformed-readme.yml", "utf8");

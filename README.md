@@ -34,3 +34,7 @@ The submitted repository ID goes from the browser to Hugging Face. Loadcheck sen
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Contact
+
+Questions, bug reports, or a document-extraction job? [hello@cybernative.ai](mailto:hello@cybernative.ai) — or visit [cybernative.ai/services/documents-to-csv/](https://cybernative.ai/services/documents-to-csv/) for fixed-price CSV extraction from PDFs and scans, with per-field source citations.

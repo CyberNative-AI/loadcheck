@@ -35,6 +35,15 @@ The submitted repository ID goes from the browser to Hugging Face. Loadcheck sen
 
 MIT. See [LICENSE](LICENSE).
 
-## Contact
+## Need this done on your own documents?
 
-Questions, bug reports, or a document-extraction job? [hello@cybernative.ai](mailto:hello@cybernative.ai) — or visit [cybernative.ai/services/documents-to-csv/](https://cybernative.ai/services/documents-to-csv/) for fixed-price CSV extraction from PDFs and scans, with per-field source citations.
+We run a fixed-price extraction service: up to 250 documents, up to 20 fields,
+$245, five business days from the day we agree the field list. Each value in the
+CSV either carries the file and page number it was read from, or is marked as one
+we could not tie to a page — so you can check the output against the source
+yourself.
+
+Full scope, what arrives, and the numbers from our own runs:
+https://cybernative.ai/services/documents-to-csv/
+
+Questions: hello@cybernative.ai

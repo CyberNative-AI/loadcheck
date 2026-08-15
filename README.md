@@ -2,6 +2,8 @@
 
 Does loading this Hugging Face repo run code? Loadcheck is a static, browser-only checker for a small set of observable loading-risk signals in public Hugging Face model and dataset repositories.
 
+Not maintained since 2026-08-15.
+
 ## Run locally
 
 Requires Node 22 or newer.

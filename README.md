@@ -39,11 +39,11 @@ MIT. See [LICENSE](LICENSE).
 
 ## Need this done on your own documents?
 
-We run a fixed-price extraction service: up to 250 documents, up to 20 fields,
-$245, five business days from the day we agree the field list. Each value in the
-CSV either carries the file and page number it was read from, or is marked as one
-we could not tie to a page — so you can check the output against the source
-yourself.
+We run a fixed-price extraction service: a free 3-file proof first, then $49 for
+up to 50 selectable-text PDFs and 10 columns, back within 2 business days. Each
+value in the CSV either carries the file and page number it was read from, or is
+marked as one we could not tie to a page — so you can check the output against
+the source yourself.
 
 Full scope, what arrives, and the numbers from our own runs:
 https://cybernative.ai/services/documents-to-csv/

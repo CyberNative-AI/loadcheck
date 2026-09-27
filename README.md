@@ -39,13 +39,8 @@ MIT. See [LICENSE](LICENSE).
 
 ## Need this done on your own documents?
 
-We run a fixed-price extraction service: a free 3-file proof first, then $49 for
-up to 50 selectable-text PDFs and 10 columns, back within 2 business days. Each
-value in the CSV either carries the file and page number it was read from, or is
-marked as one we could not tie to a page — so you can check the output against
-the source yourself.
+We also turn PDFs into CSV for you. Send selectable-text PDFs and name the columns you need; every value in the CSV cites the page and line it came from. The first 3 PDFs are free and need no card; Starter is $49 for up to 50 PDFs and 10 columns.
 
-Full scope, what arrives, and the numbers from our own runs:
-https://cybernative.ai/services/documents-to-csv/
+See a finished job: https://cybernative.ai/services/documents-to-csv/
 
 Questions: hello@cybernative.ai

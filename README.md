@@ -37,10 +37,6 @@ The submitted repository ID goes from the browser to Hugging Face. Loadcheck sen
 
 MIT. See [LICENSE](LICENSE).
 
-## Need this done on your own documents?
-
-We also turn PDFs into CSV for you. Send selectable-text PDFs and name the columns you need; every value in the CSV cites the page and line it came from. The first 3 PDFs are free and need no card; Starter is $49 for up to 50 PDFs and 10 columns.
-
-See a finished job: https://cybernative.ai/services/documents-to-csv/
+## Contact
 
 Questions: hello@cybernative.ai

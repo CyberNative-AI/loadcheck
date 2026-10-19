@@ -1,8 +1,8 @@
 # Loadcheck
 
-Does loading this Hugging Face repo run code? Loadcheck is a static, browser-only checker for a small set of observable loading-risk signals in public Hugging Face model and dataset repositories.
+Retired on 19 October 2026 and unmaintained. This repository describes Transformers and Datasets loader behaviour as of 15 August 2026.
 
-Not maintained since 2026-08-15.
+Does loading this Hugging Face repo run code? Loadcheck is a static, browser-only checker for a small set of observable loading-risk signals in public Hugging Face model and dataset repositories.
 
 ## Run locally
 
